@@ -1,0 +1,1 @@
+This folder is for images to knit into RMD files. 
