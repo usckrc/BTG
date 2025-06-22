@@ -1,3 +1,17 @@
+# Roman Thomas // 6.20.2025
+# This is Homework 1, where we will be analyzing data to discuss endothelial cells 
+
+# Change your working directory to the ROC#2, which is inside of the BTG -> Coding -> Week 1 -> Materials and Resources by clicking on "Session" (top of the screen), then go to "Set working directory", and select "Choose working directory". 
+# Then choose the "desktop as your working directory 
+
+# Activate the R packages needed to run the analysis.
+# Highlight lines 8-10 by clicking on the line number 22 and dragging down to the number 24.
+# To run the clode, press Ctrl+Enter (or Cmd+Enter) simultaneously to run the code.
+
+library(Seurat)
+library(dplyr)
+library(patchwork)
+
 # 1. What are the top 5 genes that define the endothelial cell population? 
 # a) Create 2 different kinds of plots that would demonstrate this. 
 
@@ -30,12 +44,16 @@ VlnPlot(Glom_merged, features = c("Emcn","Ctla2a","Pi16","Ramp2","Cyp4b1"))
 #this was second plot to demonstrate 
 
 # 2. Add a new metadata column that combines the replicate information and the cell type data. 
-Glom_merged <- AddMetaData(object = Glom_merged, metadata = c("Podo1", "Podo2", "Endo", "Tubule", "Mural"), col.name = "cell type")
+# use this to ensure the correct idents are present(all the cell types)
+levels(Idents(Glom_merged))
+
+Glom_merged@meta.data$cell_rep <- paste0(Idents(Glom_merged), "_", Glom_merged@meta.data$replicate)
 head(Glom_merged@meta.data)
 
 # 3. Create a table that shows the number of endothelial cells in each sample by replicate 
-cell_counts_by_replicate <- table(Glom_Endo@meta.data$replicate)
+cell_counts_by_replicate <- table(Glom_merged@meta.data$cell_rep)
 print(cell_counts_by_replicate)
+# There are 615 endothelial cells for rep1 and 298 endothelial cells for rep2
 
 # 4. Subset and re-cluster the endothelial population.
 # a. How many additional clusters are there? 
@@ -43,9 +61,13 @@ print(cell_counts_by_replicate)
 # c. Name the clusters based on your best guess on identity. 
 # d. Create a graph that demonstrates the contaminating cell types. 
 
-Glom_Endo <-subset(Glom_Endo, idents = c("Endo"))
-Glom_Endo <- NormalizeData(Glom_Endo)
-Glom_Endo <- FindVariableFeatures(Glom_Endo)
+Glom_Endo <-subset(Glom_merged, idents = c("Endo"))
+# use this to ensure this new object only has endothelial cells
+levels(Idents(Glom_Endo))
+
+# Re-cluster the cells in Glom_Endo, starting with data normalization
+Glom_Endo <- NormalizeData(Glom_Endo, normalization.method = "LogNormalize", scale.factor = 10000)
+Glom_Endo <- FindVariableFeatures(Glom_Endo, selection.method = "vst", nfeatures = 2000)
 
 # Now re-scale the data
 # Note that the row names are now based on the row names of the new Seurat object
@@ -53,7 +75,7 @@ Glom_Endo <- FindVariableFeatures(Glom_Endo)
 Endo.genes <- rownames(Glom_Endo)
 Glom_tubule <- ScaleData(Glom_Endo, features = Endo.genes)
 
-Glom_tubule <- RunPCA(Glom_tubule, features = VariableFeatures(object = Glom_tubule))
+Glom_Endo <- RunPCA(Glom_Endo, features = VariableFeatures(object = Glom_Endo))
 
 print(Glom_Endo[["pca"]], dims = 1:5, nfeatures = 5)
 
@@ -73,4 +95,25 @@ VlnPlot(Glom_Endo, features = c("Nphs2", "Pecam1", "Slc12a3", "Tagln"))
 
 #Bonus: Create a UMAP that chooses colors based on the national parks color palate 
 install.packages("NatParksPalettes")
-names(NatParksPalettes)
+library(NatParksPalettes)
+library(ggplot2)
+ls("package:NatParksPalettes")
+class(NatParksPalettes)
+
+print(NatParksPalettes)
+
+umap_data <- data.frame(UMAP1 = rnorm(100), UMAP2 = rnorm(100), group = factor(rep(1:5, each = 20)))
+ggplot(umap_data, aes(x = UMAP1, y = UMAP2, color = group)) +
+geom_point(size = 3) +  # Scatter plot with points
+scale_color_manual(values = NatParksPalettes) +  # Apply NatParksPalettes color palette
+labs(title = "UMAP Plot with NatParks Colors", x = "UMAP1", y = "UMAP2") + 
+theme_minimal()  # Apply minimal theme
+
+length((unique(umap_data$group)))
+length(NatParksPalettes)
+
+
+NatParksPalettes <- CreateSeuratObject(counts = my_list$counts, meta.data = my_list$meta_data)
+
+
+DimPlot(NatParksPalettes, reduction = "umap")
