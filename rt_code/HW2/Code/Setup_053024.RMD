@@ -1,0 +1,199 @@
+---
+title: "snRNAse alaysis Homework #2"
+author: "Roman Thomas"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document: 
+    toc: yes
+    toc_depth: 3
+    toc_float: true
+    number_sections: yes
+    theme: bootstrap
+    df_print: paged
+    code_folding: hide
+    highlight: pygments
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r load new packages, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+if (!require("here")) {install.packages("here"); require("here")}
+```
+
+# Introduction
+
+This is a **tutorial** on using R studio to setup a generic file structure that you can share with collaborators for any coding project that you are about to undertake.
+
+Additionally at the end I discrbe how to insert screenshots into knit files. 
+
+## Using the **here** package
+
+Creating reproducible code that you can share is essential in all the analysis that we do!
+
+The **here** package can really help with this!
+
+https://github.com/jennybc/here_here
+
+I have found that using the here package, in parallel with a synced shared folder on OneDrive or Dropbox is the most efficient way to share and troubleshoot and share code. 
+
+There may be other (and better) ways of doing this (perhaps pushing code to Github?), but I haven't found one yet. 
+
+## File structure is so important!
+
+While each project is unique, I have found there are some universal aspects to each project that can organized effecienty with a thoughtful file structure. 
+
+What we wnat to avoid is a lot of files in one folder and not knowing where certain files are when we want to look them up or share them. 
+
+Therefore, I suggest for every project that you start, that you maintain the file structure I'm describing in this tutorial at a minimum. Feel free to expand on it or customize it depending on the needs of the project that you are working on. 
+
+# Step 1
+
+Create a new folder with the name of the project that you are starting. Then copy and paste this setup file into that folder. 
+
+![](`r here::here("Images", "Screenshot 1.png")`)
+
+**IMPORTANT**
+
+Now close R studio and re-open it by double clicking on the setup.RMD file that you placed in the new project folder. 
+
+R studio will recognize this new folder as the location to place the files that will be created by the next command. 
+
+You can double check that you hae the right folder location by checking the directory in the consol like below:
+
+![](`r here::here("Images", "R Console.png")`)
+
+You can also always use the "here()" command in the consol to check for your current **here location**.
+
+# Step 2
+
+## Create .here file to orient files to relative directory
+
+This line of code will create an anchor location from which the **here** package will recognize as home (no matter what computer folder is synced to)
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+
+here::set_here()
+
+#Check where here directory
+here()
+
+```
+
+After running this command you should see a .here file in the folder
+
+![](`r here::here("Images", "Screenshot 2.png")`)
+
+# Step 3
+
+## Setup file architecture
+
+In order to give the files names, we need to save those names as strings the R studio environment. 
+
+I have found that the bare-minimum files that I like to have for every project that I start are 
+
+**Code** : Where .RMD and knit files will live. <br>
+**Dataset** : Where the original data files will live (cell ranger outputs or .rds files). <br>
+**Output** : Where the objects of your analysis will live. <br>
+**Images** : Where screenshots that give your analysis context will live. <br>
+**Papers** : Where papers relevant to the project will life. <br>
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+
+Code <- "Code"
+Dataset <- "Dataset"
+Output <- "Output"
+Images <- "Images"
+Papers <- "Papers"
+
+```
+
+After running this chuck you should see the values in your **Environment**.
+
+![](`r here::here("Images", "Screenshot 3.png")`)
+
+# Step 4
+
+Create a folder called output in the New Project Folder
+
+This line of code reads "If the directory called "Output" doesn't exist, then create it"
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+
+if (!dir.exists(here(Output))) {dir.create(here(Output))}
+
+```
+
+Now you should be able to see the **Output** file in the home folder
+
+![](`r here::here("Images", "Screenshot 4.png")`)
+
+## Create the rest of the folders
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+
+if (!dir.exists(here(Code))) {dir.create(here(Code))}
+if (!dir.exists(here(Dataset))) {dir.create(here(Dataset))}
+if (!dir.exists(here(Images))) {dir.create(here(Images))}
+if (!dir.exists(here(Output))) {dir.create(here(Output))}
+if (!dir.exists(here(Papers))) {dir.create(here(Papers))}
+
+```
+
+Now the rest of the files should be created into the folder. 
+
+![](`r here::here("Images", "Screenshot 5.png")`)
+
+## You can created **nested** files
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+
+Temp <- "Temp"
+
+if (!dir.exists(here("Output", Temp))) {dir.create(here("Output", Temp))}
+
+```
+
+![](`r here::here("Images", "Screenshot 6.png")`)
+
+# Adding Screenshots
+
+I have found that adding screenshots into knit files a powerful way for sharing my train of thought and documenting experimental outcomes. 
+
+I have screenshoted pictures of protocols, websites, twitter, and manuscripts (just to name a few). 
+
+The way that I organize these screenshots is using the following code:
+
+![](`r here::here("Images", "Screenshot 7.png")`)
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+
+# ![](`r here::here("Images", "Screenshot 6.png")`)
+
+```
+
+In between the brackets you can add a caption (I usually don't).
+
+And then the **here** package looks for the screenshots in the "Images" folder (the location you can keep every screenshot that you want to render with the knit file)
+
+## Clear All Object From Enviroment
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+
+rm(list = ls())
+
+```
+
+# Session Info
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+
+sessionInfo()
+
+```
+
+
+  

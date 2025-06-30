@@ -73,7 +73,7 @@ Glom_Endo <- FindVariableFeatures(Glom_Endo, selection.method = "vst", nfeatures
 # Note that the row names are now based on the row names of the new Seurat object
 
 Endo.genes <- rownames(Glom_Endo)
-Glom_tubule <- ScaleData(Glom_Endo, features = Endo.genes)
+Glom_Endo <- ScaleData(Glom_Endo, features = Endo.genes)
 
 Glom_Endo <- RunPCA(Glom_Endo, features = VariableFeatures(object = Glom_Endo))
 
@@ -84,6 +84,10 @@ VizDimLoadings(Glom_Endo, dims = 1:2, reduction = "pca")
 
 #Visualize the PCA
 DimPlot(Glom_Endo, reduction = "pca")
+Glom_Endo <- FindNeighbors(Glom_Endo, dims = 1:10)
+Glom_Endo <- FindClusters(Glom_Endo, resolution = 0.1)
+
+Glom_Endo <- RunUMAP(Glom_Endo, dims = 1:10)
 
 #This line generates the UMAP visualization 
 DimPlot(Glom_Endo, reduction = "umap")
@@ -92,6 +96,12 @@ DimPlot(Glom_merged, reduction = "umap")
 
 VlnPlot(Glom_Endo, features = c("Nphs2", "Pecam1", "Slc12a3", "Tagln"))
 # shows that podocytes are responsible for contamination,, very prevalent in cluster 2
+
+Glom.endomarkers <- FindAllMarkers(Glom_Endo, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+top5endo <-Glom.endomarkers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
+top5endo
+
+DoHeatmap(Glom_Endo, features = top5endo$gene) 
 
 #Bonus: Create a UMAP that chooses colors based on the national parks color palate 
 install.packages("NatParksPalettes")
