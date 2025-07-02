@@ -1,5 +1,5 @@
 ---
-title: "snRNAseq alaysis Homework #2"
+title: "snRNAseq Analysis Homework #2"
 author: "Roman Thomas"
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output:
@@ -22,7 +22,7 @@ knitr::opts_chunk$set(echo = TRUE)
 Opening the homework dataset from the HW2 Folder. 
 Creating a Seurat Object from the data and looking at meta.data. 
 
-```{r load new packages, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+```{r load new packages, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE} 
 
 if (!require("here")) {install.packages("here"); require("here")}
 if (!require("Seurat")) {install.packages("Seurat"); require("Seurat")}
@@ -48,11 +48,14 @@ a) What filtering parameters did you choose? Why?
 ```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
 #Creating a violin plot before setting parameters for the data
 VlnPlot(shotgun_kidney, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
 before <- ncol(shotgun_kidney)
 
 #Applying parameters to the dataset and making another violin plot to compare it to the original 
 filtered_shotgun_kidney <- subset(shotgun_kidney, subset = nFeature_RNA > 200 & nFeature_RNA < 3000 & percent.mt < 15)
+
 after <- ncol(filtered_shotgun_kidney) 
+
 VlnPlot(filtered_shotgun_kidney, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
 ```
 
@@ -62,6 +65,7 @@ b) How many cells do they filter out?
 ```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
 #Making a table to display the amount of cells being filtered with parameters applied to the snRNAseq dataset. 
 cell_counts <- data.frame(Phase = c("Before Filtering", "After Filtering", "Amount Filtered" ), Cell_Number = c(before, after, before-after))
+
 print(cell_counts)
 ```
 
@@ -82,22 +86,26 @@ top10 <- head(VariableFeatures(filtered_shotgun_kidney), 10)
 plot1 <- VariableFeaturePlot(filtered_shotgun_kidney)
 plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
 plot2
+
 all.genes <- rownames(filtered_shotgun_kidney)
 
 # Rescale the data and run a PCA that prints the top 5 genes for each of the first 5 PCs
 filtered_shotgun_kidney <- ScaleData(filtered_shotgun_kidney, features = all.genes)
 filtered_shotgun_kidney <- RunPCA(filtered_shotgun_kidney, features = VariableFeatures(object = filtered_shotgun_kidney))
+
 print(filtered_shotgun_kidney[["pca"]], dims = 1:5, nfeatures = 5)
 
 # Create plots for the genes driving the PC to analyze the clustering of cells 
 VizDimLoadings(filtered_shotgun_kidney, dims = 1:2, reduction = "pca")
-DimPlot(filtered_shotgun_kidney, reduction = "pca")
+
+DimPlot(filtered_shotgun_kidney, reduction = "pca", label = TRUE)
+
 ElbowPlot(filtered_shotgun_kidney)
 
 # Set parameters to be able to make a UMAP plot to analyze clusters 
-filtered_shotgun_kidney <- FindNeighbors(filtered_shotgun_kidney, dims = 1:10)
-filtered_shotgun_kidney <- FindClusters(filtered_shotgun_kidney, resolution = 0.08)
-filtered_shotgun_kidney <- RunUMAP(filtered_shotgun_kidney, dims = 1:10)
+filtered_shotgun_kidney <- FindNeighbors(filtered_shotgun_kidney, dims = 1:30)
+filtered_shotgun_kidney <- FindClusters(filtered_shotgun_kidney, resolution = 1.0)
+filtered_shotgun_kidney <- RunUMAP(filtered_shotgun_kidney, dims = 1:30)
 ```
 
 
@@ -107,7 +115,7 @@ DimPlot(filtered_shotgun_kidney, reduction = "umap")
 ```
 
 a) How many clusters did you get?   
-<span style="color:#956f13">I got 12 clusters.  </span>
+<span style="color:#956f13">I got 30 clusters.  </span>
 
 ```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
 library(dplyr)
@@ -120,12 +128,13 @@ top5 <- Shotgun.markers %>% group_by(cluster) %>% top_n(5, avg_log2FC)
 
 #Give the graph a title as all of the clusters are labeled by number
 Idents(filtered_shotgun_kidney) <- filtered_shotgun_kidney@meta.data$seurat_clusters
+
 DimPlot(filtered_shotgun_kidney, label = T) + ggtitle("Unidentified Cell Clusters in the Kidney")
 ```
 
 
 
-```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.height=10, fig.width=10}
 # Creating a dot plot to cross reference the features with the cell clusters present, seeing the average expression and percent expressed 
 markers.to.plot1 <- c("Lrp2",         # PT
                       "Slc5a12",      # PT-S1
@@ -178,42 +187,62 @@ col.max = 2.5) +
 
 b) Name the clusters at two different levels of specificity.  
 
-```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.widgth=10, fig.height=10}
 #Apply names to the clusters based on a more specific level of specificity 
 filtered_shotgun_kidney@meta.data <- filtered_shotgun_kidney@meta.data %>% mutate(subclass.rpt = dplyr::case_when(
 seurat_clusters == 0 ~ "PTS2",
-seurat_clusters == 1 ~ "PTS1",
-seurat_clusters == 2 ~ "Endo",
-seurat_clusters == 3 ~ "TAL",
-seurat_clusters == 4 ~ "PC",
-seurat_clusters == 5 ~ "PTS3",
+seurat_clusters == 1 ~ "Endo",
+seurat_clusters == 2 ~ "PTS1",
+seurat_clusters == 3 ~ "PTS2",
+seurat_clusters == 4 ~ "PTS3",
+seurat_clusters == 5 ~ "PTS1",
 seurat_clusters == 6 ~ "DCT",
-seurat_clusters == 7 ~ "dTL",
-seurat_clusters == 8 ~ "Perivascular",
-seurat_clusters == 9 ~ "IC-B",
-seurat_clusters == 10 ~ "PT",
-seurat_clusters == 11 ~ "Podo"
+seurat_clusters == 7 ~ "PTS2",
+seurat_clusters == 8 ~ "TAL",
+seurat_clusters == 9 ~ "DCT2, CNT",
+seurat_clusters == 10 ~ "TAL, DCT1",
+seurat_clusters == 11 ~ "PC",
+seurat_clusters == 12 ~ "Fib",
+seurat_clusters == 13 ~ "Glom Endo",
+seurat_clusters == 14 ~ "dTL",
+seurat_clusters == 15 ~ "PT",
+seurat_clusters == 16 ~ "dTL2",
+seurat_clusters == 17 ~ "PT",
+seurat_clusters == 18 ~ "IC-A",
+seurat_clusters == 19 ~ "dTL2",
+seurat_clusters == 20 ~ "IC-B",
+seurat_clusters == 21 ~ "Endo",
+seurat_clusters == 22 ~ "TAL",
+seurat_clusters == 23 ~ "Perivascular",
+seurat_clusters == 24 ~ "Endo",
+seurat_clusters == 25 ~ "Immune",
+seurat_clusters == 26 ~ "Uro",
+seurat_clusters == 27 ~ "Podo",
+seurat_clusters == 28 ~ "Fib",
+seurat_clusters == 29 ~ "MD",
 ))
 
 #Rename the graph now with the cell clusters identified 
 Idents(filtered_shotgun_kidney) <- filtered_shotgun_kidney@meta.data$subclass.rpt
+
 DimPlot(filtered_shotgun_kidney, reduction = "umap", group.by = "subclass.rpt", label = TRUE, label.size = 5) +
   ggtitle("Named Cell Clusters in the Kidney - High Level Specificty")
 ```
 
-```{r,echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+```{r,echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.width=10, fig.height=7}
 #Change the specificty of the cells to a lower level and make another UMAP
 filtered_shotgun_kidney@meta.data <- filtered_shotgun_kidney@meta.data %>%
-  mutate(broadtype = dplyr::case_when(
+  mutate(broad.subclassrpt = dplyr::case_when(
     subclass.rpt %in% c("PTS1", "PTS2", "PTS3", "PT") ~ "Proximal Tubule",
-    subclass.rpt %in% c("TAL", "dTL") ~ "Loop of Henle ",
-    subclass.rpt == "DCT" ~ "Distal Tubule",
-    subclass.rpt %in% c("PC", "IC-B") ~ "Collecting Duct",
-    subclass.rpt %in% c("Endo", "Perivascular") ~ "Vascular",
-    subclass.rpt == "Podo" ~ "Podocytes"
+    subclass.rpt %in% c("TAL", "dTL", "dTL2", "MD", "TAL, DCT1") ~ "Loop of Henle ",
+    subclass.rpt %in% c("DCT", "DCT2, CNT") ~ "Distal Tubule",
+    subclass.rpt %in% c("PC", "IC-A", "IC-B") ~ "Collecting Duct",
+    subclass.rpt %in% c("Endo", "Glom Endo", "Perivascular") ~ "Vascular",
+    subclass.rpt == "Podo" ~ "Podocytes",
+    subclass.rpt %in% c("Immune", "Fib", "Uro") ~ "Immune System"
   ))
 
-DimPlot(filtered_shotgun_kidney, group.by = "broadtype", label = TRUE, label.size = 5) +
+DimPlot(filtered_shotgun_kidney, group.by = "broad.subclassrpt", label = TRUE, label.size = 5) +
   ggtitle("Named Cell Clusters in the Kidney - Low Level Specificity") 
 ```
 
@@ -262,11 +291,12 @@ Re-level the clusters in a biological order that makes sense.
 
 ```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
 # Re-level the clusters in order 
-filtered_shotgun_kidney@meta.data$broadtype <- factor(
-  filtered_shotgun_kidney@meta.data$broadtype,
-  levels = c("Podocytes", "Proximal Tubule", "Loop of Henle", "Distal Tubule", "Collecting Duct", "Vascular")
+filtered_shotgun_kidney@meta.data$broad.subclassrpt <- factor(
+  filtered_shotgun_kidney@meta.data$broad.subclassrpt,
+  levels = c("Podocytes", "Proximal Tubule", "Loop of Henle", "Distal Tubule", "Collecting Duct", "Vascular", "Immune System")
 )
-print(levels(filtered_shotgun_kidney@meta.data$broadtype))
+
+print(levels(filtered_shotgun_kidney@meta.data$broad.subclassrpt))
 ```
 
 a) How did you decide on the order?  
@@ -277,38 +307,41 @@ a) How did you decide on the order?
 Identify and print the DEGs that define one of the cell types in your dataset.   
 ```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
 # Finding the differentially expressed genes for podocytes while cross-referencing it against IC-B cells
-cluster0.markers <- FindMarkers(filtered_shotgun_kidney, ident.1 = "Podo", ident.2 = "IC-B", min.pct = 0.25)
-podo_specific_genes <- cluster0.markers %>% filter(avg_log2FC > 1, pct.1 > 0.7, pct.2 < 0.3, p_val_adj < 0.05)
-print(podo_specific_genes)
+podo.specific.markers <- FindMarkers(filtered_shotgun_kidney, ident.1 = "Podo", min.pct = 0.25)
+podo_specific_genes <- podo.specific.markers %>% filter(avg_log2FC > 1, pct.1 > 0.8, p_val_adj < 0.05)
+podo_specific_genes_orderedFC <- podo_specific_genes %>% arrange(desc(avg_log2FC))
+
+print(podo_specific_genes_orderedFC)
 ```
 
 
 # Question 5
 Create a multidimensional dotplot that helped you determine the cell identity.  
-```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.width=9, fig.height=10}
 # Putting cell identities on the dot plot 
 markers.to.plot.clean <- c(
                       "Slc5a12",      # PTS1
                       "Slc13a3",      # PTS2
                       "Slc16a9",      # PTS3
+                      "Lrp2",         # PT
+                      "Egf",          # TAL, DCT1
                       "Epha7",        # dTL
                       "Slc12a1",      # TAL
                       "Nos1",         # MD
                       "Slc12a3",      # DCT
                       "Pvalb",        # DCT1
-                      "Slc8a1",       # DCT2
+                      "Slc8a1",       # DCT2, CNT
+                      "Emcn",         # Glom Endo
+                      "Cryab",        # dTL
+                      "Slc14a2",      # dTL2
                       "Aqp2",         # PC
                       "Slc4a1",       # IC-A
                       "Slc26a4",      # IC-B
                       "Nphs1",        # Podo
-                      "Ncam1",        # PEC
                       "Flt1",         # Endo
+                      "Ptprc",        # Immune
                       "Pdgfrb",       # Perivascular
                       "Pdgfra",       # Fib
-                      "Acta2",        # Mural
-                      "Piezo2",       # Mesangial
-                      "Cd74",         # Macrophage
-                      "Skap1",        # B/T Cells 
                       "Upk1b"         # Uro
                       )
 
@@ -325,10 +358,11 @@ col.max = 2.5) +
 ```
 
 a) Order the genes/cells to make a diagonal.  
-```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.width=9}
 # Change the order of the identities on the x-axis to create a diaonal on the dotplot 
-new_order <- c("PT", "PTS1", "PTS2", "PTS3", "dTL", "TAL", "DCT", "PC", "IC-B", "Podo", "Endo", "Perivascular")
+new_order <- c("PT", "PTS1", "PTS2", "PTS3", "TAL, DCT1","TAL", "MD", "DCT", "DCT2, CNT", "dTL", "dTL2", "PC", "IC-A", "IC-B", "Podo", "Glom Endo", "Endo", "Immune", "Perivascular", "Fib", "Uro")
 filtered_shotgun_kidney@meta.data$subclass.rpt <- factor(filtered_shotgun_kidney@meta.data$subclass.rpt, levels = new_order)
+
 DotPlot(filtered_shotgun_kidney,
 features = markers.to.plot.clean,
 group.by = "subclass.rpt",
@@ -340,7 +374,9 @@ col.min = -2.5,
 col.max = 2.5) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   coord_flip()
-saveRDS(filtered_shotgun_kidney, here("Outputs", "filtered_shotgun_kidney_rt_HW2.rds"))
+
+saveRDS(filtered_shotgun_kidney, here("Outputs", "filtered_shotgun_kidney_rptHW2.rds"))
+
 ```
 
 
