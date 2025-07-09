@@ -229,7 +229,7 @@ DimPlot(filtered_shotgun_kidney, reduction = "umap", group.by = "subclass.rpt", 
   ggtitle("Named Cell Clusters in the Kidney - High Level Specificty")
 ```
 
-```{r,echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.width=10, fig.height=7}
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.width=10, fig.height=7}
 #Change the specificty of the cells to a lower level and make another UMAP
 filtered_shotgun_kidney@meta.data <- filtered_shotgun_kidney@meta.data %>%
   mutate(broad.subclassrpt = dplyr::case_when(
