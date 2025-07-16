@@ -1,0 +1,233 @@
+---
+title: "Full Kidney Analysis"
+author: "Omid Sajjadi"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document: 
+    toc: yes
+    toc_depth: 3
+    toc_float: true
+    number_sections: yes
+    theme: bootstrap
+    df_print: paged
+    code_folding: hide
+    highlight: pygments
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,       # Hides the code
+  warning = FALSE,    # Hides warnings
+  message = FALSE,    # Hides messages (like package loading)
+  results = 'hide'    # Hides printed output
+)
+```
+
+## Data Uploading & Filtering
+
+Here the data was filtered via this reasoning: Cells with \<500 genes per cell were excluded this is because these cells are likely dead or an empty droplet. Further, cells with more than 4000 genes were also removed this voided doublets.Furthermore, cell containing \<1000 RNA molecules were also excluded, this took place to avoid dying cells. Moreover, to avoid doublets even more, cells with more than 10% mitochondrial transcripts were also excluded.
+
+```{r load new packages}
+
+if (!require("dplyr")) {install.packages("dplyr"); require("dplyr")}
+if (!require("Seurat")) {install.packages("Seurat"); require("Seurat")}
+if (!require("patchwork")) {install.packages("patchwork"); require("patchwork")}
+if (!require("cowplot")) {install.packages("cowplot"); require("cowplot")}
+if (!require("ggpubr")) {install.packages("ggpubr"); require("ggpubr")}
+if (!require("plotly")) {install.packages("plotly"); require("plotly")}
+if (!require("knitr")) {install.packages("knitr"); require("knitr")}
+
+if (!require("here")) {install.packages("here"); require("here")}
+
+```
+
+```{r load dataset and flitering, eval=TRUE, fig.align = 'center'}
+Dataset <- Read10X(data.dir = here("/Users/omidsajjadi/Desktop/BTG/Coding/Week 2 - Rmarkdown and the Whole Kidney/Week 2 Materials/Dataset"))
+Dataset <- CreateSeuratObject(counts = Dataset, project = "Dataset", min.cells = 3, min.features = 200)
+
+
+Dataset[["percent.mt"]] <- PercentageFeatureSet(Dataset, pattern = "^mt-")
+p1 <- VlnPlot(Dataset, features = c("nFeature_RNA"), pt.size = .4) + theme(axis.title.x = element_blank()) + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+p2 <- VlnPlot(Dataset, features = c("nCount_RNA"), pt.size = .4) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+p3 <- VlnPlot(Dataset, features = c("percent.mt"), pt.size = .4) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+cowplot::plot_grid(p1, p2, p3, ncol = 3, scale = .85) + draw_label("Raw Data", y = .95, size = 22, fontface = "bold")
+
+
+Dataset_Filtered <- subset(Dataset, subset = nFeature_RNA > 500 & nFeature_RNA < 4000 & nCount_RNA > 1000 & percent.mt < 10)
+p1 <- VlnPlot(Dataset_Filtered, features = c("nFeature_RNA"), pt.size = .4) + theme(axis.title.x = element_blank()) + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+p2 <- VlnPlot(Dataset_Filtered, features = c("nCount_RNA"), pt.size = .4) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+p3 <- VlnPlot(Dataset_Filtered, features = c("percent.mt"), pt.size = .4) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+cowplot::plot_grid(p1, p2, p3, ncol = 3, scale = .85) + draw_label("Filtered Data", y = .95, size = 22, fontface = "bold")
+```
+
+```{r cell-counts, eval=TRUE, fig.align = 'center'}
+before <- ncol(Dataset)
+after <- ncol(Dataset_Filtered)
+removed <- before - after
+
+cat("**Number of cells before filtering:**", before, "\n")
+cat("**Number of cells after filtering:**", after, "\n")
+cat("**Cells removed during filtering:**", removed, "\n")
+```
+
+**Number of cells before filtering:** 11830 **Number of cells after filtering:** 11092 **Cells removed during filtering:** 738
+
+## Normalizing and Scaling Data
+
+X-axis (Average Expression): How much a gene is expressed overall in all cells. Y-axis (Standardized Variance): How much the gene’s expression changes between cells.
+
+```{r Normalizing and finding the most variable genes, fig.align = 'center'}
+Dataset_Filtered <- NormalizeData(Dataset_Filtered, normalization.method = "LogNormalize", scale.factor = 10000)
+Dataset_Filtered <- FindVariableFeatures(Dataset_Filtered, selection.method = "vst", nfeatures = 2000)
+
+top10 <- head(VariableFeatures(Dataset_Filtered), 10)
+plot1 <- VariableFeaturePlot(Dataset_Filtered)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot2 + theme(legend.position = 'none')
+plot2
+
+nrow(Dataset_Filtered)
+```
+
+## PCA
+
+Below, in the scree bar and the elbow bar we can see that the elbow is much longer, or in other words the bars decline is smooth, this is an indicator that we have much more cell types. This shows that our dataset is indeed a whole kidney.
+
+```{r PCA & Visulization of The PCs, fig.align='center'}
+all.genes <- rownames(Dataset_Filtered)
+Dataset_Filtered <- ScaleData(Dataset_Filtered, features = all.genes)
+Dataset_Filtered <- RunPCA(Dataset_Filtered, features = VariableFeatures(object = Dataset_Filtered))
+
+print(Dataset_Filtered[["pca"]], dims = 1:5, nfeatures = 5)
+pca_scores <- Embeddings(Dataset_Filtered, reduction = "pca")
+
+
+ElbowPlot(Dataset_Filtered)
+
+
+
+stdev <- Dataset_Filtered[["pca"]]@stdev
+pct_var <- (stdev^2) / sum(stdev^2) * 100
+pc_df <- data.frame(
+  PC = factor(paste0("PC", 1:length(pct_var)), 
+  levels = paste0("PC", 1:length(pct_var))),
+  Variance = pct_var,
+  Label = sprintf("%.1f%%", pct_var)
+  )
+#Plot as a bar plot
+ggplot(pc_df[1:25, ], aes(x = PC, y = Variance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = Label), vjust = -0.3, size = 2) +  # label above bar
+  labs(title = "Scree Plot (Bar)", y = "% Variance Explained", x = "Principal Components") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.1))
+
+```
+
+This Dimplot using PC1 and PC2 is not a good plot and indicates the need for UMAP.
+
+```{r PCA dimplot, fig.align='center'}
+DimPlot(Dataset_Filtered, reduction = "pca")
+DimHeatmap(Dataset_Filtered, dims = 1:6, cells = 500, balanced = TRUE)
+```
+
+## UMAP and CLuster Visualization
+
+### This plot was generated using the following parameters:PCA=1:10, resolution 0.1
+
+In this graph we can see that we have 11 different cluster, I htink cluster 0 and 1 can be joined based on how it looks
+
+```{r First Configuration UMAP and differential genes between clusters to identify cell UMAP, echo=TRUE, error=FALSE, fig.align='center', message=FALSE, warning=FALSE, results=FALSE}
+
+Dataset_Filtered1 <- FindNeighbors(Dataset_Filtered, dims = 1:10)
+Dataset_Filtered1 <- FindClusters(Dataset_Filtered1, resolution = 0.1)
+Dataset_Filtered1 <- RunUMAP(Dataset_Filtered1, dims = 1:10)
+p4 <- DimPlot(Dataset_Filtered1, reduction = "umap")
+p4 
+
+Dataset_Filtered1[["RNA"]] <- JoinLayers(Dataset_Filtered1[["RNA"]])
+Data.markers <- FindAllMarkers(Dataset_Filtered1, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+Data.markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
+top5 <- Data.markers %>% group_by(cluster) %>% top_n(5, avg_log2FC)
+DoHeatmap(Dataset_Filtered1, features = top5$gene) 
+```
+
+### This plot was generated using the following parameters:PCA=1:15, resolution 0.1
+
+In this graph we can see that we have 13 different cluster, I think there might be some amount of contamination, based on how scattered some clusters are.
+
+```{r Second Configuration UMAP and differential genes between clusters to identify cell UMAP, echo=TRUE, error=FALSE, fig.align='center', message=FALSE, warning=FALSE, results=FALSE}
+
+Dataset_Filtered2 <- FindNeighbors(Dataset_Filtered, dims = 1:15)
+Dataset_Filtered2 <- FindClusters(Dataset_Filtered2, resolution = 0.1)
+Dataset_Filtered2 <- RunUMAP(Dataset_Filtered2, dims = 1:15)
+p5 <- DimPlot(Dataset_Filtered2, reduction = "umap")
+p5
+
+Dataset_Filtered2[["RNA"]] <- JoinLayers(Dataset_Filtered2[["RNA"]])
+Data.markers <- FindAllMarkers(Dataset_Filtered2, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+Data.markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
+top5 <- Data.markers %>% group_by(cluster) %>% top_n(5, avg_log2FC)
+DoHeatmap(Dataset_Filtered2, features = top5$gene) 
+```
+
+### This plot was generated using the following parameters:PCA=1:15, resolution 0.15
+
+In this graph I increased the resolution to see what will the effects be, as we
+
+```{r Third Configuration UMAP and differential genes between clusters to identify cell UMAP, echo=TRUE, error=FALSE, fig.align='center', message=FALSE, warning=FALSE, results=FALSE}
+
+Dataset_Filtered3 <- FindNeighbors(Dataset_Filtered, dims = 1:15)
+Dataset_Filtered3 <- FindClusters(Dataset_Filtered3, resolution = 0.15)
+Dataset_Filtered3 <- RunUMAP(Dataset_Filtered3, dims = 1:15)
+p6 <- DimPlot(Dataset_Filtered3, reduction = "umap")
+p6
+
+Dataset_Filtered3[["RNA"]] <- JoinLayers(Dataset_Filtered3[["RNA"]])
+Data.markers <- FindAllMarkers(Dataset_Filtered3, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+Data.markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
+top5 <- Data.markers %>% group_by(cluster) %>% top_n(5, avg_log2FC)
+DoHeatmap(Dataset_Filtered3, features = top5$gene) 
+```
+
+### This plot was generated using the following parameters:PCA=1:15, resolution 0.2
+
+In this graph I increased the resolution even more to see what will the effects be, as we
+
+```{r Third Configuration UMAP and differential genes between clusters to identify cell UMAP, echo=TRUE, error=FALSE, fig.align='center', message=FALSE, warning=FALSE, results=FALSE}
+
+Dataset_Filtered4 <- FindNeighbors(Dataset_Filtered, dims = 1:15)
+Dataset_Filtered4 <- FindClusters(Dataset_Filtered4, resolution = 0.2)
+Dataset_Filtered4 <- RunUMAP(Dataset_Filtered4, dims = 1:15)
+p7 <- DimPlot(Dataset_Filtered4, reduction = "umap")
+p7
+
+Dataset_Filtered4[["RNA"]] <- JoinLayers(Dataset_Filtered4[["RNA"]])
+Data.markers <- FindAllMarkers(Dataset_Filtered4, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+Data.markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
+top5 <- Data.markers %>% group_by(cluster) %>% top_n(5, avg_log2FC)
+DoHeatmap(Dataset_Filtered4, features = top5$gene) 
+```
+
+```{r}
+p4 <- p4 + theme(legend.position = "none") + ggtitle("Res 0.1, PC 1:10")
+p5 <- p5 + theme(legend.position = "none") + ggtitle("Res 0.1, PC 1:15")
+p6 <- p6 + theme(legend.position = "none") + ggtitle("Res 0.15, PC 1:15")
+p7 <- p7 + theme(legend.position = "none") + ggtitle("Res 0.2, PC 1:15")
+plot_grid(p4, p5, p6, p7, ncol = 2, nrow = 2)
+```
+
+## Understanding CLusters
+
+```{r}
+VlnPlot(Dataset_Filtered2, 
+        features = c("Nphs2", "Pecam1", "Slc12a3", "Tagln", "Flt1"), 
+        pt.size = 0)
+
+```
+
+```{r}
+FeaturePlot(Dataset_Filtered2, features = c("Nphs2"), label = TRUE )
+FeaturePlot(Dataset_Filtered2, features = c("Flt1"), label = TRUE )
+FeaturePlot(Dataset_Filtered2, features = c("Pecam1"), label = TRUE )
+```
