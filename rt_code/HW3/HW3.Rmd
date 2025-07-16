@@ -1,0 +1,457 @@
+---
+title: "snRNAseq Analysis Homework 3"
+author: "Roman Thomas"
+date: "2025-07-09"
+output:
+  html_document: 
+    toc: yes
+    toc_depth: 3
+    toc_float: true
+    number_sections: no
+    theme: bootstrap
+    df_print: paged
+    code_folding: hide
+    highlight: pygments
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Load Packages 
+```{r load new packages, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+if (!require("dplyr")) {install.packages("dplyr"); require("dplyr")}
+if (!require("Seurat")) {install.packages("Seurat"); require("Seurat")}
+if (!require("patchwork")) {install.packages("patchwork"); require("patchwork")}
+if (!require("cowplot")) {install.packages("cowplot"); require("cowplot")}
+if (!require("ggpubr")) {install.packages("ggpubr"); require("ggpubr")}
+if (!require("plotly")) {install.packages("plotly"); require("plotly")}
+if (!require("knitr")) {install.packages("knitr"); require("knitr")}
+if (!require("htmlwidgets")) {install.packages("htmlwidgets"); require("htmlwidgets")}
+if (!require("here")) {install.packages("here"); require("here")}
+if (!require("EnhancedVolcano")) {BiocManager::install('EnhancedVolcano'); require("EnhancedVolcano")} # volcano plot
+if (!require("tidyverse")) {install.packages("tidyverse"); require("tidyverse")} # for titying up data
+if (!require("RColorBrewer")) {install.packages("RColorBrewer"); require("RColorBrewer")} # for color brewer
+if (!require("sctransform")) {install.packages("sctransform"); require("sctransform")} # for data normalization
+if (!require("glmGamPoi")) {BiocManager::install('glmGamPoi'); require("glmGamPoi")} # for data normalization, sctransform
+if (!require("openxlsx")) {install.packages("openxlsx"); require("openxlsx")} # to save .xlsx files
+if (!require("SoupX")) {install.packages("SoupX"); require("SoupX")}
+if (!require("DoubletFinder")) {BiocManager::install('DoubletFinder'); require("DoubletFinder")}
+# remotes::install_github('chris-mcginnis-ucsf/DoubletFinder', force = TRUE)
+library(DoubletFinder)
+set.seed((12345))
+here()
+```
+
+# Upload Previous Data 
+Upload the RDS file from the previous homework to analyze the doublets. 
+```{r load RDS file, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+readRDS("filtered_shotgun_kidney_rptHW2.rds")
+```
+
+
+# 2a. Upload New Data and Remove the Ambient RNA using SoupX
+```{r load .h5 files and remove ambient RNA, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+tod = Read10X_h5(here("Dataset", "1_raw_feature_bc_matrix.h5"))
+toc = Read10X_h5(here("Dataset", "1_filtered_feature_bc_matrix.h5")) 
+sc = SoupChannel(tod,toc)
+
+#Make the Seurat object from the filtered control data
+SO <- Read10X_h5(here("Dataset", "1_filtered_feature_bc_matrix.h5")) 
+SO <- CreateSeuratObject(counts = SO, project = "Peri-INTACT") #refers to intact skin or tissue not damaged
+
+#Cluster the cells with Seurat
+SO <- SCTransform(SO, verbose = F)
+SO <- RunPCA(SO, verbose = F)
+SO <- RunUMAP(SO, dims = 1:30, verbose = F)
+SO <- FindNeighbors(SO, dims = 1:30, verbose = F)
+SO <- FindClusters(SO, verbose = T)
+
+
+meta <- SO@meta.data
+umap <- SO@reductions$umap@cell.embeddings
+clusters <- setNames(meta$seurat_clusters, rownames(meta))
+
+#Ensure the two following numbers are equal 
+length(clusters)
+nrow(sc$metaData)
+
+sc <- setClusters(sc, clusters)
+sc <- setDR(sc, umap)
+
+#Estimate rho
+sc = autoEstCont(sc)
+
+#Clean the data
+SO_out = adjustCounts(sc)
+ 
+#Create a new Seurat Object out of the cleaned data
+seurat.obj <- CreateSeuratObject(SO_out)
+```
+
+
+## Remove Doublets with the Doublet Detector 
+```{r remove doublets, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+VlnPlot(seurat.obj, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
+
+
+# Minimal filtering of low quality cells 
+
+seurat.obj.f <- subset(seurat.obj, nFeature_RNA > 500)
+VlnPlot(seurat.obj.f, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
+
+
+seurat.obj.f
+
+
+# Pre-process standard workflow
+seurat.obj.f <- NormalizeData(object = seurat.obj.f)
+seurat.obj.f <- FindVariableFeatures(object = seurat.obj.f)
+seurat.obj.f <- ScaleData(object = seurat.obj.f)
+seurat.obj.f <- RunPCA(object = seurat.obj.f)
+ElbowPlot(seurat.obj.f, ndims = 40)
+
+
+# PCs around 15
+seurat.obj.f <- FindNeighbors(object = seurat.obj.f, dims = 1:30)
+seurat.obj.f <- FindClusters(object = seurat.obj.f, resolution = 1)
+
+
+seurat.obj.f <- RunUMAP(object = seurat.obj.f, dims = 1:30)
+DimPlot(seurat.obj.f, reduction = "umap", label = TRUE)
+```
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.height=10, fig.width=12}
+# Creating a dot plot to cross reference the features with the cell clusters present, seeing the average expression and percent expressed 
+markers.to.plot1 <- c("Lrp2",         # PT
+                      "Slc5a12",      # PT-S1
+                      "Slc13a3",      # PT-S2
+                      "Slc16a9",      # PT-S3
+                      "Havcr1",       # Injured PT
+                      "Epha7",        # dTL
+                      "Cryab",        # dTL
+                      "Cdh13",        # dTL1
+                      "Slc14a2",      # dTL2
+                      "Slc12a1",      # TAL
+                      "Umod",         # TAL, DCT1
+                      "Egf",          # TAL, DCT1,
+                      "Cldn10",       # TAL
+                      "Cldn16",       # TAL
+                      "Nos1",         # MD
+                      "Slc12a3",      # DCT
+                      "Pvalb",        # DCT1
+                      "Slc8a1",       # DCT2, CNT
+                      "Aqp2",         # PC
+                      "Slc4a1",       # IC-A
+                      "Slc26a4",      # IC-B
+                      "Nphs1",        # Podo
+                      "Ncam1",        # PEC
+                      "Flt1",         # Endo
+                      "Emcn",         # Glom Endo
+                      "Kdr",          # Capillary Endo
+                      "Pdgfrb",       # Perivascular
+                      "Pdgfra",       # Fib
+                      "Piezo2",       # Mesangial
+                      "Acta2",        # Mural
+                      "Ptprc",        # Immune
+                      "Cd74",         # Macrophage
+                      "Skap1",        # B/T Cells 
+                      "Upk1b",        # Uro
+                      "Top2a"         # Proliferation
+)
+
+DotPlot(seurat.obj.f,
+features = markers.to.plot1,
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip()
+```
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.show='hide', results='hide'}
+# Calculate each combination of pN and pK
+# I set the PCs to 1:20 just to be safe even though I said 15 earlier 
+sweep.res.list_seurat.obj.f <- paramSweep(seurat.obj.f, PCs = 1:20, sct = FALSE) 
+```
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+#Summarize each combination of pN and pK
+sweep.stats_seurat.obj.f <- summarizeSweep(sweep.res.list_seurat.obj.f, GT = FALSE) 
+
+#Select the pK that corresponds to max bcmvn to optimize doublet detection
+bcmvn_seurat.obj.f <- find.pK(sweep.stats_seurat.obj.f)
+```
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+pK <- bcmvn_seurat.obj.f %>% 
+  filter(BCmetric == max(BCmetric)) %>%
+  select(pK) 
+
+#See pK in the Values Environment
+pK <- as.numeric(as.character(pK[[1]]))
+```
+
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+# Homotypic Doublet Proportion Estimate -------------------------------------------------------------------------------------
+annotations <- seurat.obj.f@meta.data$seurat_clusters  
+ 
+homotypic.prop <- modelHomotypic(annotations)           
+homotypic.prop
+
+# 10X Multiplet Rate Table (the doublet ratio is # of cells recovered divided by 125000) https://kb.10xgenomics.com/hc/en-us/articles/360001378811-What-is-the-maximum-number-of-cells-that-can-be-profiled-
+ 
+nrow(seurat.obj.f@meta.data)
+
+nExp_poi <- round(nrow(seurat.obj.f@meta.data) # To calculate cell number
+                  /125000              # To calculate the doublet ratio
+                  *nrow(seurat.obj.f@meta.data))
+nExp_poi
+
+nExp_poi_adj <- round(nExp_poi*(1-homotypic.prop))
+```
+
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+seurat.obj.f_doublets <- doubletFinder(seurat.obj.f,
+                        PCs = 1:20,
+                        pN = 0.25,
+                        pK = pK,
+                        nExp = nExp_poi_adj,
+                        reuse.pANN = NULL, sct = FALSE)
+```
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+colnames(seurat.obj.f_doublets@meta.data)[6] <- "pANN"
+colnames(seurat.obj.f_doublets@meta.data)[7] <- "DF.class"
+head(seurat.obj.f_doublets@meta.data)
+
+table(seurat.obj.f_doublets@meta.data$DF.class)
+Week3_doubletcount <-sum(seurat.obj.f_doublets@meta.data$DF.class == "Doublet")
+
+DimPlot(seurat.obj.f_doublets, group.by = "DF.class")
+
+VlnPlot(seurat.obj.f_doublets, "nFeature_RNA", group.by = "DF.class")
+
+VlnPlot(seurat.obj.f_doublets, "nCount_RNA", group.by = "DF.class")
+```
+
+
+## Save an Object with Only the Singlets 
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+seurat.obj.f_singlets <- subset(seurat.obj.f_doublets, DF.class == "Singlet")
+seurat.obj.f_singlets
+
+DimPlot(seurat.obj.f_singlets, reduction = "umap")
+```
+
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+seurat.obj.f_singlets <- seurat.obj.f_singlets[!grepl("^mt-", rownames(seurat.obj.f_singlets)), ]
+
+#Mito Sanity Check
+counts <- GetAssayData(seurat.obj.f_singlets, assay = "RNA")
+mito.genes <- grep(pattern = "^mt-", x = rownames(x = counts), value = TRUE) 
+mito.genes #should be zero
+
+DimPlot(seurat.obj.f_singlets, reduction = "umap", label = T)
+```
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.height=16, fig.width=22}
+seurat.obj.f_singlets.markers <- FindAllMarkers(seurat.obj.f_singlets, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+seurat.obj.f_singlets.markers %>%
+    group_by(cluster) %>%
+    top_n(n = 3, wt = avg_log2FC) -> top3
+
+DoHeatmap(seurat.obj.f_singlets, features = top3$gene) + NoLegend()
+```
+
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.width=10, fig.height=15}
+seurat.obj.f_singlets.markers %>%
+    group_by(cluster) %>%
+    top_n(n = 2, wt = avg_log2FC) -> top2
+
+VlnPlot(seurat.obj.f_singlets, 
+        features = unique(top2$gene),
+        stack = TRUE, 
+        flip = TRUE,
+        pt.size = 0)+
+        NoLegend()
+```
+
+
+# 2b. Compare Data from Previous Week to Current Data 
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+seurat_list <- readRDS("filtered_shotgun_kidney_rptHW2.rds")
+
+seurat.list.doublets <- doubletFinder(seurat_list,
+                        PCs = 1:10,
+                        pN = 0.25,
+                        pK = pK,
+                        nExp = nExp_poi_adj,
+                        reuse.pANN = NULL, sct = FALSE)
+```
+
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+colnames(seurat.list.doublets@meta.data)[9] <- "pANN"
+colnames(seurat.list.doublets@meta.data)[10] <- "DF.class"
+head(seurat.list.doublets@meta.data)
+
+table(seurat.list.doublets@meta.data$DF.class)
+
+DimPlot(seurat.list.doublets, group.by = "DF.class")
+
+VlnPlot(seurat.list.doublets, "nFeature_RNA", group.by = "DF.class")
+
+VlnPlot(seurat.list.doublets, "nCount_RNA", group.by = "DF.class")
+```
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.width==15}
+seurat.list.singlets <- subset(seurat.list.doublets, DF.class == "Singlet")
+seurat.list.singlets
+
+DimPlot(seurat.list.singlets, reduction = "umap", label=T)
+
+head(seurat_list@meta.data)
+Week2_doubletcount <-sum(seurat_list@meta.data$subclass.rpt == "Doublet")
+```
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+doublet_counts <- data.frame(Phase = c("Week 2 Data", "Week 3 Data", "Percentage" ), Cell_Number = c(Week2_doubletcount, Week3_doubletcount, Week2_doubletcount/Week3_doubletcount))
+
+print(doublet_counts)
+```
+
+<span style="color:#956f13">I only identified 15% of the doublets last week when looking at the current data.  </span>  
+
+
+# 2c. Localization of Doublets 
+<span style="color:#956f13"> The cells for singlets and doublets usually localize to the same area as where singlets go by themselves. The singlets dominate a majority of the graphs that contain both singlets and doublets, with some doublets being spread across the graph with both. They were spread practically in each cluster.  </span>  
+
+# 3. Supercluster & Identify Cell Types 
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.height=8}
+#Apply names to the clusters based on a more specific level of specificity 
+seurat.obj.f@meta.data <- seurat.obj.f@meta.data %>% mutate(subgroup.rpt = dplyr::case_when(
+seurat_clusters == 0 ~ "PTS2",
+seurat_clusters == 1 ~ "Endo",
+seurat_clusters == 2 ~ "PTS1",
+seurat_clusters == 3 ~ "PTS2",
+seurat_clusters == 4 ~ "PTS2",
+seurat_clusters == 5 ~ "PTS3",
+seurat_clusters == 6 ~ "PTS1",
+seurat_clusters == 7 ~ "DCT",
+seurat_clusters == 8 ~ "TAL",
+seurat_clusters == 9 ~ "TAL",
+seurat_clusters == 10 ~ "DCT2",
+seurat_clusters == 11 ~ "PC",
+seurat_clusters == 12 ~ "Fib",
+seurat_clusters == 13 ~ "dTL",
+seurat_clusters == 14 ~ "Glom Endo",
+seurat_clusters == 15 ~ "Endo",
+seurat_clusters == 16 ~ "dTL2",
+seurat_clusters == 17 ~ "PT",
+seurat_clusters == 18 ~ "CNT",
+seurat_clusters == 19 ~ "TAL",
+seurat_clusters == 20 ~ "IC-A",
+seurat_clusters == 21 ~ "dTL2",
+seurat_clusters == 22 ~ "IC-B",
+seurat_clusters == 23 ~ "TAL",
+seurat_clusters == 24 ~ "Perivascular",
+seurat_clusters == 25 ~ "Uro",
+seurat_clusters == 26 ~ "Endo",
+seurat_clusters == 27 ~ "Immune",
+seurat_clusters == 28 ~ "Podo",
+seurat_clusters == 29 ~ "Fib",
+seurat_clusters == 30 ~ "Fib",
+seurat_clusters == 31 ~ "PT",
+seurat_clusters == 32 ~ "dTL",
+seurat_clusters == 33 ~ "Endo",
+))
+
+#Rename the graph now with the cell clusters identified 
+Idents(seurat.obj.f) <- seurat.obj.f@meta.data$subgroup.rpt
+
+DimPlot(seurat.obj.f, reduction = "umap", group.by = "subgroup.rpt", label = TRUE, label.size = 4) +
+  ggtitle("Named Cell Clusters in the Kidney - Subgroup Clustering")
+```
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.height=7}
+#Change the specificty of the cells to a lower level and make another UMAP
+seurat.obj.f@meta.data <- seurat.obj.f@meta.data %>%
+  mutate(group.rpt = dplyr::case_when(
+    subgroup.rpt %in% c("PTS1", "PTS2", "PTS3", "PT") ~ "Proximal Tubule",
+    subgroup.rpt %in% c("TAL", "dTL", "dTL2") ~ "Loop of Henle ",
+    subgroup.rpt %in% c("DCT", "DCT2", "CNT") ~ "Distal Tubule",
+    subgroup.rpt %in% c("PC", "IC-A", "IC-B") ~ "Collecting Duct",
+    subgroup.rpt %in% c("Endo", "Glom Endo", "Perivascular") ~ "Vascular",
+    subgroup.rpt == "Podo" ~ "Podocytes",
+    subgroup.rpt %in% c("Immune", "Fib", "Uro") ~ "Immune System"
+  ))
+
+DimPlot(seurat.obj.f, group.by = "group.rpt", label = TRUE, label.size = 4) +
+  ggtitle("Named Cell Clusters in the Kidney - Group Clustering") 
+
+saveRDS(seurat.obj.f_singlets, here("Singlets.rds"))
+```
+
+# 4. Mesangial Cell Modular Score 
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.width=10, fig.height=8}
+Mesangial_marker_gene_list <- list(c("Serpine2", "Fhl2", "Des", "Prkca", "Art3", "Nt5e", "Ptgfrb")) # 7 genes from Mesangial Cell Section of Annual Review of Physiology Paper 
+
+seurat.obj.f_singlets <- AddModuleScore(object = seurat.obj.f_singlets, features = Mesangial_marker_gene_list, name = "Mesangial_score")
+
+#Check for score in the metadata
+
+head(seurat.obj.f_singlets@meta.data)
+
+VlnPlot(seurat.obj.f_singlets, "Mesangial_score1")
+```
+## 4a. 
+<span style="color:#956f13">It appears that each cluster actually contains mesangial cells based on the genes specific to mesangial cells.  </span>
+
+## 4b.  
+<span style="color:#956f13">There are more cell types than just mesangial cells present in these clusters, as they have all been identified under another cell type, and none of them were identified as mesangial cells.  </span>  
+
+# 5. Forloop for Vln Plot for Top 3 Genes in Each Cluster
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+clusters <- unique(top3$cluster)
+
+for (clust in clusters) {
+
+gene_list <- top3 %>% filter(cluster == clust) %>% pull(gene)
+
+for (gene in gene_list) {
+A <- VlnPlot(seurat.obj.f_singlets, features = gene, group.by = "seurat_clusters") +
+         ggtitle(paste("Cluster", clust, "-", gene))
+    print(A)
+}}
+```
+
+# 6. DEG Analysis on Clusters 
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+clusters <- unlist(levels(seurat.obj.f_singlets$seurat_clusters))
+names(clusters) <- as.numeric(clusters)
+
+DEG.env <- new.env()
+
+ls(DEG.env)
+```
+
+
+
+# Session Info
+
+```{r, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+
+sessionInfo()
+
+```
+
