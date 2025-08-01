@@ -23,10 +23,6 @@ knitr::opts_chunk$set(
 )
 ```
 
-## Data Uploading & Filtering
-
-Here the data was filtered via this reasoning: Cells with \<500 genes per cell were excluded this is because these cells are likely dead or an empty droplet. Further, cells with more than 4000 genes were also removed this voided doublets.Furthermore, cell containing \<1000 RNA molecules were also excluded, this took place to avoid dying cells. Moreover, to avoid doublets even more, cells with more than 10% mitochondrial transcripts were also excluded.
-
 ```{r load new packages}
 
 if (!require("dplyr")) {install.packages("dplyr"); require("dplyr")}
@@ -41,42 +37,50 @@ if (!require("here")) {install.packages("here"); require("here")}
 
 ```
 
-```{r load dataset and flitering, eval=TRUE, fig.align = 'center'}
+## Question 1
+### 1-1: What filtering parameters did you choose? Why?
+
+Here the data was filtered via this reasoning: Cells with <500 genes per cell were excluded this is because these cells are likely dead or an empty droplet. Further, cells with more than 4000 genes were also removed this voided doublets.Furthermore, cell containing <1000 RNA molecules were also excluded, this took place to avoid dying cells. Moreover, to avoid doublets even more, cells with more than 10% mitochondrial transcripts were also excluded.
+
+```{r, eval=TRUE, fig.align = 'center'}
 Dataset <- Read10X(data.dir = here("/Users/omidsajjadi/Desktop/BTG/Coding/Week 2 - Rmarkdown and the Whole Kidney/Week 2 Materials/Dataset"))
 Dataset <- CreateSeuratObject(counts = Dataset, project = "Dataset", min.cells = 3, min.features = 200)
-
-
 Dataset[["percent.mt"]] <- PercentageFeatureSet(Dataset, pattern = "^mt-")
 p1 <- VlnPlot(Dataset, features = c("nFeature_RNA"), pt.size = .4) + theme(axis.title.x = element_blank()) + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
 p2 <- VlnPlot(Dataset, features = c("nCount_RNA"), pt.size = .4) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
 p3 <- VlnPlot(Dataset, features = c("percent.mt"), pt.size = .4) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
-cowplot::plot_grid(p1, p2, p3, ncol = 3, scale = .85) + draw_label("Raw Data", y = .95, size = 22, fontface = "bold")
-
-
-Dataset_Filtered <- subset(Dataset, subset = nFeature_RNA > 500 & nFeature_RNA < 4000 & nCount_RNA > 1000 & percent.mt < 10)
-p1 <- VlnPlot(Dataset_Filtered, features = c("nFeature_RNA"), pt.size = .4) + theme(axis.title.x = element_blank()) + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
-p2 <- VlnPlot(Dataset_Filtered, features = c("nCount_RNA"), pt.size = .4) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
-p3 <- VlnPlot(Dataset_Filtered, features = c("percent.mt"), pt.size = .4) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
-cowplot::plot_grid(p1, p2, p3, ncol = 3, scale = .85) + draw_label("Filtered Data", y = .95, size = 22, fontface = "bold")
 ```
+
+```{r, eval=TRUE, fig.align = 'center'}
+Dataset_Filtered <- subset(Dataset, subset = nFeature_RNA > 500 & nFeature_RNA < 4000 & nCount_RNA > 1000 & percent.mt < 10)
+p11 <- VlnPlot(Dataset_Filtered, features = c("nFeature_RNA"), pt.size = 0) + theme(axis.title.x = element_blank()) + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5)) 
+p12 <- VlnPlot(Dataset_Filtered, features = c("nCount_RNA"), pt.size = 0) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+p13 <- VlnPlot(Dataset_Filtered, features = c("percent.mt"), pt.size = 0) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+cowplot::plot_grid(p1, p2, p3, p11, p22, p33, ncol = 3, nrow = 2, scale = .85) + draw_label("Filtered Data", y = .95, size = 22, fontface = "bold")
+```
+
+## 1-2: How many cells do they filter out? 
 
 ```{r cell-counts, eval=TRUE, fig.align = 'center'}
 before <- ncol(Dataset)
 after <- ncol(Dataset_Filtered)
 removed <- before - after
 
-cat("**Number of cells before filtering:**", before, "\n")
-cat("**Number of cells after filtering:**", after, "\n")
-cat("**Cells removed during filtering:**", removed, "\n")
+txt1 <- paste("**Number of cells before filtering:**", before)
+txt2 <- paste("**Number of cells after filtering:**", after)
+txt3 <- paste("**Cells removed during filtering:**", removed)
 ```
 
-**Number of cells before filtering:** 11830 **Number of cells after filtering:** 11092 **Cells removed during filtering:** 738
+`txt1`
+`txt2`
+`txt3`
 
-## Normalizing and Scaling Data
+## Normalizing, Scaling Data, and PCA
 
 X-axis (Average Expression): How much a gene is expressed overall in all cells. Y-axis (Standardized Variance): How much the gene’s expression changes between cells.
 
-```{r Normalizing and finding the most variable genes, fig.align = 'center'}
+```{r, echo= FALSE, fig.align='center'}
 Dataset_Filtered <- NormalizeData(Dataset_Filtered, normalization.method = "LogNormalize", scale.factor = 10000)
 Dataset_Filtered <- FindVariableFeatures(Dataset_Filtered, selection.method = "vst", nfeatures = 2000)
 
@@ -86,25 +90,23 @@ plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
 plot2 + theme(legend.position = 'none')
 plot2
 
-nrow(Dataset_Filtered)
+gene_count <- nrow(Dataset_Filtered)
 ```
-
-## PCA
+This dataset contains `r gene_count` genes.
 
 Below, in the scree bar and the elbow bar we can see that the elbow is much longer, or in other words the bars decline is smooth, this is an indicator that we have much more cell types. This shows that our dataset is indeed a whole kidney.
 
-```{r PCA & Visulization of The PCs, fig.align='center'}
+```{r, echo=FALSE, fig.align='center'}
 all.genes <- rownames(Dataset_Filtered)
 Dataset_Filtered <- ScaleData(Dataset_Filtered, features = all.genes)
 Dataset_Filtered <- RunPCA(Dataset_Filtered, features = VariableFeatures(object = Dataset_Filtered))
 
 print(Dataset_Filtered[["pca"]], dims = 1:5, nfeatures = 5)
 pca_scores <- Embeddings(Dataset_Filtered, reduction = "pca")
+```
 
-
-ElbowPlot(Dataset_Filtered)
-
-
+```{r fig.align='center', eval=FALSE}
+ElbowPlot(Dataset_Filtered) + labs(title = "Elbow Plot") + theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 0.1))
 
 stdev <- Dataset_Filtered[["pca"]]@stdev
 pct_var <- (stdev^2) / sum(stdev^2) * 100
@@ -121,113 +123,553 @@ ggplot(pc_df[1:25, ], aes(x = PC, y = Variance)) +
   labs(title = "Scree Plot (Bar)", y = "% Variance Explained", x = "Principal Components") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 0.1))
-
 ```
 
-This Dimplot using PC1 and PC2 is not a good plot and indicates the need for UMAP.
+This is a Dimplot using PC1 and PC2 is not a good plot and indicates the need for UMAP.
 
-```{r PCA dimplot, fig.align='center'}
+```{r, fig.align='center'}
 DimPlot(Dataset_Filtered, reduction = "pca")
-DimHeatmap(Dataset_Filtered, dims = 1:6, cells = 500, balanced = TRUE)
 ```
 
-## UMAP and CLuster Visualization
 
-### This plot was generated using the following parameters:PCA=1:10, resolution 0.1
+## Question 2 - UMAP and Cluster Visualization
+### What filtering parameters did you choose? Why?  
+To determine the optimal parameters for UMAP visualization, I conducted a series of tests using various combinations of principal component (PC) dimensions and clustering resolution values. Through this process, **I identified PC dimensions 1–30 with a resolution of 2.0 as the most effective.** These parameters produced the clearest separation between cell types, resulting in well-defined and biologically meaningful clusters.
 
-In this graph we can see that we have 11 different cluster, I htink cluster 0 and 1 can be joined based on how it looks
-
-```{r First Configuration UMAP and differential genes between clusters to identify cell UMAP, echo=TRUE, error=FALSE, fig.align='center', message=FALSE, warning=FALSE, results=FALSE}
-
-Dataset_Filtered1 <- FindNeighbors(Dataset_Filtered, dims = 1:10)
-Dataset_Filtered1 <- FindClusters(Dataset_Filtered1, resolution = 0.1)
-Dataset_Filtered1 <- RunUMAP(Dataset_Filtered1, dims = 1:10)
-p4 <- DimPlot(Dataset_Filtered1, reduction = "umap")
-p4 
-
-Dataset_Filtered1[["RNA"]] <- JoinLayers(Dataset_Filtered1[["RNA"]])
-Data.markers <- FindAllMarkers(Dataset_Filtered1, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-Data.markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
-top5 <- Data.markers %>% group_by(cluster) %>% top_n(5, avg_log2FC)
-DoHeatmap(Dataset_Filtered1, features = top5$gene) 
+```{r, error=FALSE, fig.align='center', message=FALSE, warning=FALSE, results=FALSE, echo=FALSE}
+Dataset_Filtered4 <- FindNeighbors(Dataset_Filtered, dims = 1:30)
+Dataset_Filtered4 <- FindClusters(Dataset_Filtered4, resolution = 2)
+Dataset_Filtered4 <- RunUMAP(Dataset_Filtered4, dims = 1:30)
+p4 <- DimPlot(Dataset_Filtered4, reduction = "umap", label = TRUE)
+p4
 ```
-
-### This plot was generated using the following parameters:PCA=1:15, resolution 0.1
-
-In this graph we can see that we have 13 different cluster, I think there might be some amount of contamination, based on how scattered some clusters are.
-
-```{r Second Configuration UMAP and differential genes between clusters to identify cell UMAP, echo=TRUE, error=FALSE, fig.align='center', message=FALSE, warning=FALSE, results=FALSE}
-
-Dataset_Filtered2 <- FindNeighbors(Dataset_Filtered, dims = 1:15)
-Dataset_Filtered2 <- FindClusters(Dataset_Filtered2, resolution = 0.1)
-Dataset_Filtered2 <- RunUMAP(Dataset_Filtered2, dims = 1:15)
-p5 <- DimPlot(Dataset_Filtered2, reduction = "umap")
-p5
-
-Dataset_Filtered2[["RNA"]] <- JoinLayers(Dataset_Filtered2[["RNA"]])
-Data.markers <- FindAllMarkers(Dataset_Filtered2, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-Data.markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
-top5 <- Data.markers %>% group_by(cluster) %>% top_n(5, avg_log2FC)
-DoHeatmap(Dataset_Filtered2, features = top5$gene) 
-```
-
-### This plot was generated using the following parameters:PCA=1:15, resolution 0.15
-
-In this graph I increased the resolution to see what will the effects be, as we
-
-```{r Third Configuration UMAP and differential genes between clusters to identify cell UMAP, echo=TRUE, error=FALSE, fig.align='center', message=FALSE, warning=FALSE, results=FALSE}
-
-Dataset_Filtered3 <- FindNeighbors(Dataset_Filtered, dims = 1:15)
-Dataset_Filtered3 <- FindClusters(Dataset_Filtered3, resolution = 0.15)
-Dataset_Filtered3 <- RunUMAP(Dataset_Filtered3, dims = 1:15)
-p6 <- DimPlot(Dataset_Filtered3, reduction = "umap")
-p6
-
-Dataset_Filtered3[["RNA"]] <- JoinLayers(Dataset_Filtered3[["RNA"]])
-Data.markers <- FindAllMarkers(Dataset_Filtered3, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-Data.markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
-top5 <- Data.markers %>% group_by(cluster) %>% top_n(5, avg_log2FC)
-DoHeatmap(Dataset_Filtered3, features = top5$gene) 
-```
-
-### This plot was generated using the following parameters:PCA=1:15, resolution 0.2
-
-In this graph I increased the resolution even more to see what will the effects be, as we
-
-```{r Third Configuration UMAP and differential genes between clusters to identify cell UMAP, echo=TRUE, error=FALSE, fig.align='center', message=FALSE, warning=FALSE, results=FALSE}
-
-Dataset_Filtered4 <- FindNeighbors(Dataset_Filtered, dims = 1:15)
-Dataset_Filtered4 <- FindClusters(Dataset_Filtered4, resolution = 0.2)
-Dataset_Filtered4 <- RunUMAP(Dataset_Filtered4, dims = 1:15)
-p7 <- DimPlot(Dataset_Filtered4, reduction = "umap")
-p7
-
+```{r, error=FALSE, fig.align='center', message=FALSE, warning=FALSE, results=FALSE, echo=TRUE}
 Dataset_Filtered4[["RNA"]] <- JoinLayers(Dataset_Filtered4[["RNA"]])
-Data.markers <- FindAllMarkers(Dataset_Filtered4, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+Data.markers <- FindAllMarkers(Dataset_Filtered4, only.pos = TRUE, min.pct = 0.5, logfc.threshold = 1) # I can speed up this by increasing threshold and pct
 Data.markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
 top5 <- Data.markers %>% group_by(cluster) %>% top_n(5, avg_log2FC)
-DoHeatmap(Dataset_Filtered4, features = top5$gene) 
+p44 <- DoHeatmap(Dataset_Filtered4, features = top5$gene) 
+p44
 ```
 
-```{r}
+### How many clusters did you get? 
+I was able to get 37 cluster, but there are doublets in there and I would need to identify those doublets and remove them to achieve a higher resolution UMAP.
+
+```{r, fig.width= 20, fig.height= 10, echo=FALSE}
+markers.to.plot1 <- c("Lrp2",         # PTS1, PTS2, PTS3
+                      "Slc5a12",      # PTS1
+                      "Slc13a3",      # PTS2
+                      "Slc16a9",      # PTS3
+                      "Epha7",        # DTL
+                      "Cryab",        # DTL
+                      "Slc12a1",      # TAL1, TAL2, MD
+                      "Cldn16",       # TAL1
+                      "Cldn10",       # TAL2
+                      "Nos1",         # MD
+                      "Slc12a3",      # DCT1, DCT2
+                      "Egf",          # DCT1
+                      "Slc8a1",       # CNT, DCT2
+                      "Aqp2",         # PC
+                      "Slc4a1",       # ICA
+                      "Kit",          # ICA
+                      "Slc26a4",      # ICB
+                      "Nphs1",        # PODO
+                      "Ncam1",        # PEC
+                      "Upk1b",        # URO
+                      "Lef1",         # ECG
+                      "Flt1",         # ECP
+                      "Emcn",         # ECP
+                      "Lyve1",        # LYMPH
+                      "Kdr",          # LYMPH
+                      "Pdgfra",       # FIB
+                      "Pdgfrb",       # FIB, MES, VSMC
+                      "Piezo2",       # MES
+                      "Acta2",        # VSMC
+                      "Ptprc",        # LYMPHO, MACRO
+                      "Skap1",        # LYMPHO
+                      "Cd74"         # MACRO
+)
+ 
+p5 <- DotPlot(Dataset_Filtered4,
+features = markers.to.plot1,
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  labs(x = "Gene Features", y = "Clusters")
+ 
+p5
+```
+
+
+
+```{r, echo=TRUE, eval=FALSE}
+p6 <- as.data.frame(p5$data)
+ 
+maybe_doublets <- p6 %>%
+  group_by(id) %>%
+  filter(all(avg.exp.scaled <= 2.0)) %>%
+  distinct(id) %>%
+  pull(id)
+ 
+maybe_doublets
+ 
+# Create color palette: grey for all, color for maybe_doublets
+all_clusters <- levels(Dataset_Filtered4)
+cluster_colors <- setNames(rep("grey80", length(all_clusters)), all_clusters)
+cluster_colors[maybe_doublets] <- "red"
+ 
+# Get UMAP coordinates and cluster assignments
+umap_data <- Embeddings(Dataset_Filtered4, "umap") %>%
+  as.data.frame() %>%
+  mutate(cluster = Idents(Dataset_Filtered4))
+ 
+# Compute cluster centroids
+cluster_centroids <- umap_data %>%
+  group_by(cluster) %>%
+  summarise(UMAP_1 = mean(umap_1), UMAP_2 = mean(umap_2))
+ 
+# Keep only centroids for maybe_doublets
+label_data <- cluster_centroids %>%
+  filter(cluster %in% maybe_doublets)
+ 
+# Plot
+DimPlot(Dataset_Filtered4, reduction = "umap", cols = cluster_colors) +
+  ggrepel::geom_text_repel(
+    data = label_data,
+    aes(x = UMAP_1, y = UMAP_2, label = cluster),
+    size = 4,
+    color = "black",
+    fontface = "bold",
+    max.overlaps = Inf,
+    box.padding = 0.5,
+    point.padding = 0.5
+  )
+```
+
+
+
+```{r, echo=TRUE, eval=FALSE}
+# Apply the name "SINGLET" or "DOUBLET" to a cluster based on the multidimensional dot plot
+ 
+doublet_clusters <- c(20,21,27)
+ 
+# Annotate metadata
+Dataset_Filtered4@meta.data <- Dataset_Filtered4@meta.data %>%
+  mutate(subclass.doublet = if_else(
+    seurat_clusters %in% doublet_clusters, "DOUBLET", "SINGLET"
+  ))
+ 
+# Change the identities to align with new subclass names and make umap
+Idents(Dataset_Filtered4) <- Dataset_Filtered4@meta.data$subclass.doublet
+ 
+DimPlot(Dataset_Filtered4, reduction = "umap") +
+  ggtitle("Cell Clusters in the Kidney - Singlet vs. Doublet Clustering")
+ 
+# Clean out the doublets manually that were identified
+seurat.obj.f_cleaned <- subset(Dataset_Filtered4, idents = "DOUBLET", invert = TRUE)
+ 
+# Double check that the identity was removed
+table(Idents(seurat.obj.f_cleaned))
+```
+
+
+```{r, echo=TRUE, eval=FALSE}
+
+#code for reclustering post doublet detection
+library(sctransform)
+seurat.obj.f_cleaned <- SCTransform(seurat.obj.f_cleaned) %>%
+    RunPCA() %>%
+    FindNeighbors(dims = 1:30) %>%
+    FindClusters(resolution = 2, verbose = FALSE) %>%
+    RunUMAP(dims = 1:30)
+ 
+DimPlot(seurat.obj.f_cleaned, reduction = "umap", label = TRUE)
+```
+
+
+
+```{r, echo=TRUE, eval=FALSE}
 p4 <- p4 + theme(legend.position = "none") + ggtitle("Res 0.1, PC 1:10")
 p5 <- p5 + theme(legend.position = "none") + ggtitle("Res 0.1, PC 1:15")
 p6 <- p6 + theme(legend.position = "none") + ggtitle("Res 0.15, PC 1:15")
 p7 <- p7 + theme(legend.position = "none") + ggtitle("Res 0.2, PC 1:15")
 plot_grid(p4, p5, p6, p7, ncol = 2, nrow = 2)
+
+p44 <- p44 + theme(legend.position = "none") + ggtitle("Res 0.1, PC 1:10")
+p55 <- p55 + theme(legend.position = "none") + ggtitle("Res 0.1, PC 1:15")
+p66 <- p66 + theme(legend.position = "none") + ggtitle("Res 0.15, PC 1:15")
+p77 <- p77 + theme(legend.position = "none") + ggtitle("Res 0.2, PC 1:15")
+plot_grid(p44, p55, p66, p77, ncol = 2, nrow = 2)
+```
+
+```{r, echo=TRUE, eval=FALSE}
+p77
 ```
 
 ## Understanding CLusters
 
-```{r}
+```{r, echo=TRUE, eval=FALSE}
 VlnPlot(Dataset_Filtered2, 
         features = c("Nphs2", "Pecam1", "Slc12a3", "Tagln", "Flt1"), 
         pt.size = 0)
 
 ```
 
-```{r}
-FeaturePlot(Dataset_Filtered2, features = c("Nphs2"), label = TRUE )
-FeaturePlot(Dataset_Filtered2, features = c("Flt1"), label = TRUE )
-FeaturePlot(Dataset_Filtered2, features = c("Pecam1"), label = TRUE )
+```{r, echo=TRUE, eval=FALSE}
+#cluster 1
+FeaturePlot(Dataset_Filtered4, features = c("Gatm"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Slc5a12"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Slc6a19"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Slc5a12"), label = TRUE )
+
+#cluster0
+FeaturePlot(Dataset_Filtered4, features = c("Inmt"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Slco1a1"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Gm13936"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Slc13a3"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Slc7a13"), label = TRUE )
+
+#cluster13
+FeaturePlot(Dataset_Filtered4, features = c("Thsd7a"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Nphs2"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Nphs1"), label = TRUE )
+
+#cluster2
+FeaturePlot(Dataset_Filtered4, features = c("Pecam1"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Exoc3l2"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Ccm2l"), label = TRUE )
+
+#cluster3
+FeaturePlot(Dataset_Filtered4, features = c("Slc12a1"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Ptger3"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Enox1"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Nos1"), label = TRUE )
+
+#cluster4
+FeaturePlot(Dataset_Filtered4, features = c("Slc5a12"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Slc7a13"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Ghr"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Slc6a18"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Napsa"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Slc22a19"), label = TRUE )
+
+#cluster5
+FeaturePlot(Dataset_Filtered4, features = c("Slc12a3"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Trpm6"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Pvalb"), label = TRUE )
+
+#cluster9
+FeaturePlot(Dataset_Filtered4, features = c("Slc8a1"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Rhcg"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Slc2a9"), label = TRUE )
+
+#cluster6
+FeaturePlot(Dataset_Filtered4, features = c("Fxyd4"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Elf5"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Aqp4"), label = TRUE )
+
+#cluster11
+FeaturePlot(Dataset_Filtered4, features = c("Slc26a4"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Hmx2"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Atp6v0d2"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Gm12121"), label = TRUE )
+
+#cluster14
+FeaturePlot(Dataset_Filtered4, features = c("Mgl2"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Ccr2"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Ptprc"), label = TRUE )
+
+#cluster7
+FeaturePlot(Dataset_Filtered4, features = c("Lama2"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Fhl2"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Pdgfrb"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("C7"), label = TRUE )
+
+#cluster12
+FeaturePlot(Dataset_Filtered4, features = c("Gimap5"), label = TRUE )
+FeaturePlot(Dataset_Filtered4, features = c("Gimap6"), label = TRUE )
+
 ```
+
+
+## Changing the cluster names and Dotplot
+
+```{r, echo=TRUE, eval=FALSE}
+Dataset_Filtered4_copy2 <- UpdateSeuratObject(Dataset_Filtered4)
+```
+
+```{r, echo=TRUE, eval=FALSE}
+
+# Redo on full object
+Idents(Dataset_Filtered4_copy2) <- factor(Idents(Dataset_Filtered4_copy2), levels = 0:14)
+levels(Dataset_Filtered4_copy2)
+
+new.cluster.ids <- c(
+  "PTS3", "PTS1-S2", "Endo", "LOH/MD", "PTS2-S3", "DCT", "CD-PC",
+  "Mesangial", "Unknown_8", "CNT", "Unknown_10", "CD-IC/CD-Trans",
+  "T cells", "Podo", "Macrophages"
+)
+levels(Dataset_Filtered4_copy2)
+levels(Idents(Dataset_Filtered4_copy2))
+
+names(new.cluster.ids) <- levels(Dataset_Filtered4_copy2)
+levels(Dataset_Filtered4_copy2)
+levels(Idents(Dataset_Filtered4_copy2))
+
+Dataset_Filtered4_copy2 <- RenameIdents(Dataset_Filtered4_copy2, new.cluster.ids)
+levels(Dataset_Filtered4_copy2)
+levels(Idents(Dataset_Filtered4_copy2))
+# Plot updated UMAP with new cluster names
+DimPlot(
+  Dataset_Filtered4_copy2, 
+  reduction = "umap", 
+  label = TRUE, 
+  pt.size = 0.5, 
+  label.size = 7, 
+  repel = FALSE
+) + NoLegend()
+levels(Dataset_Filtered4_copy2)
+levels(Idents(Dataset_Filtered4_copy2))
+
+marker_list <- list(
+  "PTS3" = c("Inmt", "Slco1a1", "Gm13936", "Slc13a3", "Slc7a13"),
+  "PTS1-S2" = c("Gatm", "Slc5a12", "Slc6a19"),
+  "Endo" = c("Pecam1", "Exoc3l2", "Ccm2l"),
+  "LOH/MD" = c("Slc12a1", "Ptger3", "Enox1", "Nos1"),
+  "PTS2-S3" = c("Slc5a12", "Slc7a13", "Ghr", "Slc6a18", "Napsa", "Slc22a19"),
+  "DCT" = c("Slc12a3", "Trpm6", "Pvalb"),
+  "CD-PC" = c("Fxyd4", "Elf5", "Aqp4"),
+  "Mesangial" = c("Lama2", "Fhl2", "Pdgfrb", "C7"),
+  "CNT" = c("Slc8a1", "Rhcg", "Slc2a9"),
+  "CD-IC/CD-Trans" = c("Slc26a4", "Hmx2", "Atp6v0d2", "Gm12121"),
+  "T cells" = c("Gimap5", "Gimap6"),
+  "Podo" = c("Thsd7a", "Nphs2", "Nphs1"),
+  "Macrophages" = c("Mgl2", "Ccr2", "Ptprc")
+)
+levels(Dataset_Filtered4_copy2)
+levels(Idents(Dataset_Filtered4_copy2))
+
+Idents(Dataset_Filtered4_copy2) <- "seurat_clusters"
+
+
+DotPlot(Dataset_Filtered4_copy2, features = marker_list) +
+  scale_x_discrete(limits = marker_list) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("DotPlot of Selected Markers by Cell Type") +
+  coord_flip()
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r, echo=TRUE, eval=FALSE}
+if (!require("SingleR")) {
+  if (!require("BiocManager")) install.packages("BiocManager")
+  BiocManager::install("SingleR")
+}
+library(SingleR)
+
+if (!require("SingleCellExperiment")) {
+  BiocManager::install("SingleCellExperiment")
+}
+library(SingleCellExperiment)
+```
+
+```{r, echo=TRUE, eval=FALSE}
+# Load the expression matrix
+reference_data <- read.table('/Users/omidsajjadi/Desktop/BTG/Coding/Week 2 - Rmarkdown and the Whole Kidney/Week 2 Materials/Dataset/GSE107585_Mouse_kidney_single_cell_datamatrix.txt', header = TRUE, row.names = 1)
+
+# Confirm the format
+head(reference_data)
+```
+
+```{r, echo=TRUE, eval=FALSE}
+query <- as.SingleCellExperiment(Dataset_Filtered2)
+```
+
+
+```{r, echo=TRUE, eval=FALSE}
+# Separate the cluster labels (if needed later)
+cluster_labels <- reference_data["Cluster_Number", ]  # optional
+
+# Remove Cluster_Number from expression matrix
+expr_matrix <- reference_data[!rownames(reference_data) %in% "Cluster_Number", ]
+
+library(SingleCellExperiment)
+
+# Make sure the expression matrix is numeric
+expr_matrix <- as.matrix(expr_matrix)
+storage.mode(expr_matrix) <- "integer"
+
+# Create reference SCE object
+ref_sce <- SingleCellExperiment(list(counts = expr_matrix))
+
+library(SingleR)
+
+# Example with your dataset as reference (ref_sce) and another Seurat object converted to SCE
+# query <- as.SingleCellExperiment(Dataset_Filtered4)
+# Option 1: Remove lowly expressed genes
+keep_genes <- rowSums(counts(ref_sce) > 1) >= 10
+ref_sce <- ref_sce[keep_genes, ]
+# Run SingleR
+pred <- SingleR(test = query, ref = ref_sce, labels = cluster_labels)  # only if you assign proper labels
+```
+```{r, echo=TRUE, eval=FALSE}
+# LOAD LIBRARIES
+if (!require("SingleR")) {
+  if (!require("BiocManager")) install.packages("BiocManager")
+  BiocManager::install("SingleR")
+}
+library(SingleR)
+library(SingleCellExperiment)
+
+# -- ASSUMPTIONS --
+# `reference_data` is a data.frame or matrix with:
+#   - rows = genes + 1 row named "Cluster_Number"
+#   - columns = reference cells
+# `query` is a SingleCellExperiment object (e.g., your Seurat query converted)
+
+# 1. Define cluster to cell type mapping
+cluster_map <- c(
+  "1" = "Endo",
+  "2" = "Podo",
+  "3" = "PT",
+  "4" = "LOH",
+  "5" = "DCT",
+  "6" = "CD-PC",
+  "7" = "CD-IC",
+  "8" = "CD-Trans",
+  "9" = "Novel1",
+  "10" = "Fib",
+  "11" = "Macro",
+  "12" = "Neutro",
+  "13" = "B lymph",
+  "14" = "T lymph",
+  "15" = "NK",
+  "16" = "Novel2"
+)
+
+# 2. Extract cluster numbers (column-wise)
+cluster_ids <- as.character(unlist(reference_data["Cluster_Number", ]))
+
+# 3. Drop 'Cluster_Number' row to isolate expression matrix
+ref_expr <- reference_data[rownames(reference_data) != "Cluster_Number", ]
+
+# 4. Convert to numeric matrix (may be character if from .txt)
+ref_expr <- apply(ref_expr, 2, as.numeric)
+rownames(ref_expr) <- rownames(reference_data)[rownames(reference_data) != "Cluster_Number"]
+colnames(ref_expr) <- colnames(reference_data)
+
+# 5. Optional filtering to reduce memory usage
+keep_genes <- rowSums(ref_expr > 0) > 10
+ref_expr <- ref_expr[keep_genes, ]
+
+# 6. Assign labels to reference cells
+ref_labels <- cluster_map[cluster_ids]
+
+# 7. Create SingleCellExperiment object for reference
+ref_sce <- SingleCellExperiment(
+  assays = list(logcounts = ref_expr),
+  colData = DataFrame(label = ref_labels)
+)
+
+# ------------------------------
+# PREP QUERY (ALREADY LOADED)
+# ------------------------------
+
+# 8. Extract log-normalized matrix from query
+expr_mat <- assay(query, "logcounts")
+
+# 9. Extract query cluster labels (make sure this column exists)
+clusters <- colData(query)$seurat_clusters
+
+# 10. Manually aggregate expression per cluster
+cluster_means <- function(expr_mat, clusters) {
+  unique_clusters <- unique(clusters)
+  avg_expr <- sapply(unique_clusters, function(cl) {
+    rowMeans(expr_mat[, clusters == cl, drop = FALSE])
+  })
+  rownames(avg_expr) <- rownames(expr_mat)
+  colnames(avg_expr) <- unique_clusters
+  avg_expr
+}
+
+aggregated_query <- cluster_means(expr_mat, clusters)
+
+# 11. Run SingleR
+pred <- SingleR(test = aggregated_query, ref = ref_sce, labels = ref_sce$label)
+
+# 12. Results
+head(pred$labels)
+table(pred$labels)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
